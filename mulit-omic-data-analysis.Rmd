@@ -1,0 +1,161 @@
+---
+title: "Age Prediction Using Multi-Omic Data"
+author: "Dr. R. Craig Stillwell"
+output: github_document
+---
+
+## Introduction
+
+This report analyzes gene expression data to uncover patterns, relationships, and predictive insights. The analysis covers data preparation, correlation analysis, dimensionality reduction (PCA), clustering, and predictive modeling using machine learning techniques like Random Forest.
+
+```{r setup, include=FALSE}
+# Load necessary libraries
+library(data.table)    # Efficient data handling
+library(ggplot2)       # Data visualization
+library(plotly)        # Interactive plots
+library(corrplot)      # Correlation plots
+library(factoextra)    # Visualization for PCA and clustering
+library(randomForest)  # Random Forest model
+library(pheatmap)      # Heatmap visualization
+```
+
+## Data Preparation
+
+We start by loading the dataset and checking for missing values, ensuring data quality before analysis.
+
+```{r data-loading, echo=TRUE}
+# Load the dataset (adjust the filename if necessary)
+data <- fread("data/test_rows.csv")
+
+# Preview the data
+head(data)
+
+# Check the structure of the dataset
+str(data)
+
+# Check for missing values
+missing_values <- sapply(data, function(x) sum(is.na(x)))
+missing_values[missing_values > 0]
+```
+
+## Correlation Analysis
+
+We compute and visualize the correlation matrix to understand relationships between genes.
+
+```{r correlation-matrix, echo=TRUE}
+# Compute the correlation matrix
+correlation_matrix <- cor(data, use = "complete.obs")
+
+# Adjust margins to give more space for the title and labels
+par(mar = c(5, 5, 4.7, 5)) # Bottom, left, top, right margins
+
+# Visualize the correlation matrix
+corrplot(correlation_matrix, method = "color", tl.col = "black", tl.cex = 0.7)
+
+# Add a properly spaced title
+title(main = "Gene Expression Correlation Matrix", line = 4, cex.main = 1.5)
+``` 
+
+## Distribution Analysis
+
+Analyzing the distribution of gene expression levels helps identify skewness or outliers in the data.
+
+```{r gene-distribution, echo=TRUE}
+# Plot distributions of RPA2_3 expression
+ggplot(data, aes(x = RPA2_3)) +
+  geom_histogram(binwidth = 0.5, fill = "blue", alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Distribution of RPA2_3 Expression", x = "RPA2_3 Expression Level", y = "Frequency")
+```
+
+## Principal Component Analysis (PCA)
+
+PCA reduces dimensionality and highlights the main components contributing to variation in gene expression.
+
+```{r pca-analysis, echo=TRUE}
+# Perform PCA on the dataset
+pca_result <- prcomp(data, scale. = TRUE)
+
+# Visualize explained variance
+fviz_eig(pca_result, addlabels = TRUE, ylim = c(0, 50), main = "Scree Plot of Principal Components")
+
+# Plot the PCA biplot
+fviz_pca_biplot(pca_result, repel = TRUE, col.var = "contrib", 
+                gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+                title = "PCA Biplot of Gene Expression Data")
+```
+
+## Clustering Analysis
+
+Clustering helps group similar samples based on gene expression patterns.
+
+```{r kmeans-clustering, echo=TRUE}
+# Elbow method to determine optimal clusters
+set.seed(123)
+wss <- sapply(1:10, function(k) kmeans(data, centers = k, nstart = 20, iter.max = 300)$tot.withinss)
+
+# Plot Elbow curve
+plot(1:10, wss, type = "b", pch = 19, frame = FALSE,
+     xlab = "Number of clusters K", ylab = "Total within-clusters sum of squares",
+     main = "Elbow Method for Determining Optimal K")
+
+# Apply K-means clustering with K=3
+kmeans_result <- kmeans(data, centers = 3, nstart = 20)
+
+# Add cluster labels to data
+data$cluster <- as.factor(kmeans_result$cluster)
+
+# Visualize clusters
+ggplot(data, aes(x = RPA2_3, y = ZYG11A_4, color = cluster)) +
+  geom_point(alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "K-Means Clustering of Gene Expression Data", x = "RPA2_3 Expression", y = "ZYG11A_4 Expression")
+``` 
+
+## Predictive Modeling
+
+Random Forest is a powerful machine learning technique that can handle high-dimensional data and capture complex relationships. Here, we use it to predict individual age based on gene expression data.
+
+```{r random-forest, echo=TRUE}
+# Create a Synthetic 'Age' Column for testing
+data$Age <- sample(20:80, nrow(data), replace = TRUE)  # Random age values between 20 and 80
+# Train-test split (80/20 split)
+set.seed(42)
+train_idx <- sample(seq_len(nrow(data)), size = 0.8 * nrow(data))
+train_data <- data[train_idx, ]
+test_data <- data[-train_idx, ]
+
+# Train Random Forest model
+rf_model <- randomForest(Age ~ ., data = train_data, proximity = TRUE, importance = TRUE, ntree = 500)
+
+# Predict on test set
+predictions <- predict(rf_model, newdata = test_data)
+
+# Evaluate model performance
+actual <- test_data$Age
+mse <- mean((predictions - actual)^2)
+cat("Mean Squared Error (MSE):", mse)
+
+# Visualize feature importance
+varImpPlot(rf_model, main = "Feature Importance - Gene Expression Data")
+```
+
+## Heatmap of Gene Correlations
+
+Heatmaps provide a visual summary of correlations among genes, highlighting clusters and patterns.
+
+```{r heatmap, echo=TRUE}
+# Remove cluster column for correlation analysis
+data_numeric <- data[, !("cluster"), with = FALSE]
+
+# Compute the correlation matrix
+gene_correlation <- cor(data_numeric, use = "complete.obs")
+
+# Create heatmap
+pheatmap(gene_correlation, color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+         main = "Heatmap of Gene Expression Correlations", display_numbers = TRUE)
+```
+
+## Conclusion
+
+This analysis provides insights into gene expression patterns, clustering, and feature importance. By leveraging machine learning techniques such as PCA and Random Forest, we can identify key features and underlying structures in the data, aiding future biological interpretations and research directions.
